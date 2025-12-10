@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Plus, User, Clock, CheckCircle2, Circle, AlertCircle, MessageSquarePlus, Trash2, X } from "lucide-react";
-import { Task } from "@/types";
+import { Plus, User, Clock, CheckCircle2, Circle, AlertCircle, MessageSquarePlus, Trash2, X, ChevronDown } from "lucide-react";
+import { Task, Update } from "@/types";
 import { IN_CHARGE_OPTIONS } from "@/data/in-charge";
 import { clsx } from "clsx";
 
@@ -15,33 +15,48 @@ export function TasksView({ tasks, onAddTask, onUpdateTask, onDeleteTask }: Task
     const [isAdding, setIsAdding] = useState(false);
     const [addingUpdateFor, setAddingUpdateFor] = useState<string | null>(null);
     const [newUpdateText, setNewUpdateText] = useState("");
+    const [expandedHistoryFor, setExpandedHistoryFor] = useState<Set<string>>(new Set());
     const [newTask, setNewTask] = useState<{
         title: string;
         inCharge: string[];
         status: Task["status"];
-        latestUpdate: string;
+        initialUpdate: string;
     }>({
         title: "",
         inCharge: [],
         status: "Pending",
-        latestUpdate: "",
+        initialUpdate: "",
     });
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!newTask.title || newTask.inCharge.length === 0) return;
-        onAddTask({ ...newTask, projectId: "lantern" }); // Project ID will be overridden by parent
+        const updates: Update[] = newTask.initialUpdate
+            ? [{ text: newTask.initialUpdate, timestamp: Date.now() }]
+            : [];
+        onAddTask({
+            title: newTask.title,
+            inCharge: newTask.inCharge,
+            status: newTask.status,
+            updates,
+            projectId: "lantern"
+        }); // Project ID will be overridden by parent
         setIsAdding(false);
-        setNewTask({ title: "", inCharge: [], status: "Pending", latestUpdate: "" });
+        setNewTask({ title: "", inCharge: [], status: "Pending", initialUpdate: "" });
     };
 
     const handleStatusChange = (taskId: string, newStatus: Task["status"]) => {
         onUpdateTask?.(taskId, { status: newStatus });
     };
 
-    const handleAddUpdate = (taskId: string) => {
+    const handleAddUpdate = (taskId: string, currentUpdates: Update[]) => {
         if (!newUpdateText.trim()) return;
-        onUpdateTask?.(taskId, { latestUpdate: newUpdateText.trim() });
+        const newUpdate: Update = {
+            text: newUpdateText.trim(),
+            timestamp: Date.now()
+        };
+        // Add new update at the beginning (newest first)
+        onUpdateTask?.(taskId, { updates: [newUpdate, ...currentUpdates] });
         setNewUpdateText("");
         setAddingUpdateFor(null);
     };
@@ -61,13 +76,42 @@ export function TasksView({ tasks, onAddTask, onUpdateTask, onDeleteTask }: Task
         }));
     };
 
-    const togglePersonOnTask = (taskId: string, currentPeople: string[], person: string) => {
-        const newPeople = currentPeople.includes(person)
-            ? currentPeople.filter(p => p !== person)
-            : [...currentPeople, person];
+    const removePersonFromTask = (e: React.MouseEvent, taskId: string, currentPeople: string[], personToRemove: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const newPeople = currentPeople.filter(p => p !== personToRemove);
         if (newPeople.length > 0) {
             onUpdateTask?.(taskId, { inCharge: newPeople });
+        } else {
+            alert("Cannot remove the last person. A task must have at least one person assigned.");
         }
+    };
+
+    const addPersonToTask = (taskId: string, currentPeople: string[], personToAdd: string) => {
+        if (!currentPeople.includes(personToAdd)) {
+            onUpdateTask?.(taskId, { inCharge: [...currentPeople, personToAdd] });
+        }
+    };
+
+    const toggleHistory = (taskId: string) => {
+        setExpandedHistoryFor(prev => {
+            const next = new Set(prev);
+            if (next.has(taskId)) {
+                next.delete(taskId);
+            } else {
+                next.add(taskId);
+            }
+            return next;
+        });
+    };
+
+    const formatDate = (timestamp: number) => {
+        return new Date(timestamp).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
     };
 
     const getStatusColor = (status: Task["status"]) => {
@@ -91,6 +135,19 @@ export function TasksView({ tasks, onAddTask, onUpdateTask, onDeleteTask }: Task
     const normalizeInCharge = (inCharge: string | string[]): string[] => {
         if (Array.isArray(inCharge)) return inCharge;
         return inCharge ? [inCharge] : [];
+    };
+
+    // Helper to normalize updates (for backward compatibility with old latestUpdate string)
+    const normalizeUpdates = (task: Task): Update[] => {
+        if (task.updates && Array.isArray(task.updates)) {
+            return task.updates;
+        }
+        // Backward compatibility: convert old latestUpdate string to Update array
+        const oldUpdate = (task as unknown as { latestUpdate?: string }).latestUpdate;
+        if (oldUpdate) {
+            return [{ text: oldUpdate, timestamp: task.createdAt }];
+        }
+        return [];
     };
 
     return (
@@ -158,10 +215,10 @@ export function TasksView({ tasks, onAddTask, onUpdateTask, onDeleteTask }: Task
                         </div>
 
                         <div className="col-span-1 md:col-span-2">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Latest Update</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Initial Update (optional)</label>
                             <textarea
-                                value={newTask.latestUpdate}
-                                onChange={(e) => setNewTask({ ...newTask, latestUpdate: e.target.value })}
+                                value={newTask.initialUpdate}
+                                onChange={(e) => setNewTask({ ...newTask, initialUpdate: e.target.value })}
                                 className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-black/5"
                                 placeholder="Any progress notes..."
                                 rows={2}
@@ -195,6 +252,11 @@ export function TasksView({ tasks, onAddTask, onUpdateTask, onDeleteTask }: Task
                 ) : (
                     tasks.map((task) => {
                         const people = normalizeInCharge(task.inCharge);
+                        const updates = normalizeUpdates(task);
+                        const latestUpdate = updates[0];
+                        const previousUpdates = updates.slice(1);
+                        const isHistoryExpanded = expandedHistoryFor.has(task.id);
+
                         return (
                             <div key={task.id} className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group">
                                 <div className="flex justify-between items-start mb-3">
@@ -236,8 +298,8 @@ export function TasksView({ tasks, onAddTask, onUpdateTask, onDeleteTask }: Task
                                         >
                                             {person}
                                             <button
-                                                onClick={() => togglePersonOnTask(task.id, people, person)}
-                                                className="text-gray-400 hover:text-red-500 transition-colors"
+                                                onClick={(e) => removePersonFromTask(e, task.id, people, person)}
+                                                className="text-gray-400 hover:text-red-500 transition-colors p-0.5 -mr-1 rounded hover:bg-red-50"
                                                 title="Remove person"
                                             >
                                                 <X className="w-3 h-3" />
@@ -249,7 +311,8 @@ export function TasksView({ tasks, onAddTask, onUpdateTask, onDeleteTask }: Task
                                         value=""
                                         onChange={(e) => {
                                             if (e.target.value) {
-                                                togglePersonOnTask(task.id, people, e.target.value);
+                                                addPersonToTask(task.id, people, e.target.value);
+                                                e.target.value = ""; // Reset dropdown
                                             }
                                         }}
                                         className="bg-gray-50 border border-dashed border-gray-300 rounded-md px-2 py-1 text-xs text-gray-500 hover:border-gray-400 cursor-pointer"
@@ -261,18 +324,22 @@ export function TasksView({ tasks, onAddTask, onUpdateTask, onDeleteTask }: Task
                                     </select>
                                 </div>
 
-                                {/* Latest Update Section */}
+                                {/* Updates Section */}
                                 <div className="border-t border-gray-100 pt-3">
-                                    {task.latestUpdate && (
-                                        <div className="flex items-start gap-1.5 mb-3">
-                                            <AlertCircle className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
-                                            <p className="text-gray-600 leading-snug text-sm">{task.latestUpdate}</p>
+                                    {/* Latest Update */}
+                                    {latestUpdate && (
+                                        <div className="flex items-start gap-2 mb-3 bg-blue-50 p-3 rounded-lg">
+                                            <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                                            <div className="flex-1">
+                                                <p className="text-gray-700 leading-snug text-sm">{latestUpdate.text}</p>
+                                                <p className="text-xs text-gray-400 mt-1">{formatDate(latestUpdate.timestamp)}</p>
+                                            </div>
                                         </div>
                                     )}
 
                                     {/* Add Update Button/Form */}
                                     {addingUpdateFor === task.id ? (
-                                        <div className="flex gap-2 items-start">
+                                        <div className="flex gap-2 items-start mb-3">
                                             <input
                                                 type="text"
                                                 value={newUpdateText}
@@ -283,7 +350,7 @@ export function TasksView({ tasks, onAddTask, onUpdateTask, onDeleteTask }: Task
                                                 onKeyDown={(e) => {
                                                     if (e.key === "Enter") {
                                                         e.preventDefault();
-                                                        handleAddUpdate(task.id);
+                                                        handleAddUpdate(task.id, updates);
                                                     }
                                                     if (e.key === "Escape") {
                                                         setAddingUpdateFor(null);
@@ -292,7 +359,7 @@ export function TasksView({ tasks, onAddTask, onUpdateTask, onDeleteTask }: Task
                                                 }}
                                             />
                                             <button
-                                                onClick={() => handleAddUpdate(task.id)}
+                                                onClick={() => handleAddUpdate(task.id, updates)}
                                                 className="px-3 py-2 bg-black text-white text-sm rounded-lg hover:bg-gray-800 transition-colors"
                                             >
                                                 Save
@@ -310,11 +377,35 @@ export function TasksView({ tasks, onAddTask, onUpdateTask, onDeleteTask }: Task
                                     ) : (
                                         <button
                                             onClick={() => setAddingUpdateFor(task.id)}
-                                            className="flex items-center gap-1.5 text-gray-500 hover:text-gray-700 text-sm hover:bg-gray-50 px-2 py-1 rounded-md transition-colors"
+                                            className="flex items-center gap-1.5 text-gray-500 hover:text-gray-700 text-sm hover:bg-gray-50 px-2 py-1 rounded-md transition-colors mb-3"
                                         >
                                             <MessageSquarePlus className="w-4 h-4" />
                                             Add Update
                                         </button>
+                                    )}
+
+                                    {/* Previous Updates Toggle */}
+                                    {previousUpdates.length > 0 && (
+                                        <div>
+                                            <button
+                                                onClick={() => toggleHistory(task.id)}
+                                                className="flex items-center gap-1.5 text-gray-400 hover:text-gray-600 text-xs transition-colors"
+                                            >
+                                                <ChevronDown className={clsx("w-3 h-3 transition-transform", isHistoryExpanded && "rotate-180")} />
+                                                {isHistoryExpanded ? "Hide" : "Show"} {previousUpdates.length} previous update{previousUpdates.length > 1 ? "s" : ""}
+                                            </button>
+
+                                            {isHistoryExpanded && (
+                                                <ul className="mt-2 space-y-2 pl-4 border-l-2 border-gray-100">
+                                                    {previousUpdates.map((update, index) => (
+                                                        <li key={index} className="text-sm text-gray-500">
+                                                            <span className="text-gray-600">{update.text}</span>
+                                                            <span className="text-xs text-gray-400 ml-2">— {formatDate(update.timestamp)}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             </div>

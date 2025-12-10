@@ -1,3 +1,6 @@
+"use client";
+
+import { useState, useRef, useEffect } from "react";
 import { ChevronDown } from "lucide-react";
 import { ProjectId, TabId } from "@/types";
 import { clsx } from "clsx";
@@ -26,29 +29,53 @@ export function Header({
     currentTab,
     setCurrentTab,
 }: HeaderProps) {
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsDropdownOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const handleProjectSelect = (projectId: ProjectId) => {
+        setCurrentProject(projectId);
+        setIsDropdownOpen(false);
+    };
+
     return (
         <div className="flex flex-col items-center gap-6 py-8 px-4 w-full max-w-2xl mx-auto">
             {/* Project Dropdown */}
-            <div className="relative group">
-                <button className="flex items-center gap-2 text-2xl font-bold text-gray-900 bg-white/50 px-4 py-2 rounded-xl hover:bg-white/80 transition-colors cursor-pointer">
+            <div className="relative" ref={dropdownRef}>
+                <button
+                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                    className="flex items-center gap-2 text-2xl font-bold text-gray-900 bg-white/50 px-4 py-2 rounded-xl hover:bg-white/80 transition-colors cursor-pointer"
+                >
                     {PROJECTS.find((p) => p.id === currentProject)?.label}
-                    <ChevronDown className="w-6 h-6 text-gray-500" />
+                    <ChevronDown className={clsx("w-6 h-6 text-gray-500 transition-transform", isDropdownOpen && "rotate-180")} />
                 </button>
 
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-white/80 backdrop-blur-md shadow-xl rounded-xl overflow-hidden hidden group-hover:block transition-all border border-gray-100 z-10">
-                    {PROJECTS.map((project) => (
-                        <button
-                            key={project.id}
-                            onClick={() => setCurrentProject(project.id)}
-                            className={clsx(
-                                "w-full text-left px-4 py-3 hover:bg-black/5 font-medium",
-                                currentProject === project.id ? "text-blue-600 bg-blue-50" : "text-gray-700"
-                            )}
-                        >
-                            {project.label}
-                        </button>
-                    ))}
-                </div>
+                {isDropdownOpen && (
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-white/95 backdrop-blur-md shadow-xl rounded-xl overflow-hidden border border-gray-100 z-10 animate-in fade-in slide-in-from-top-2 duration-200">
+                        {PROJECTS.map((project) => (
+                            <button
+                                key={project.id}
+                                onClick={() => handleProjectSelect(project.id)}
+                                className={clsx(
+                                    "w-full text-left px-4 py-3 hover:bg-black/5 font-medium transition-colors",
+                                    currentProject === project.id ? "text-blue-600 bg-blue-50" : "text-gray-700"
+                                )}
+                            >
+                                {project.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Pill Switcher */}
