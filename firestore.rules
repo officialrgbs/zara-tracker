@@ -9,9 +9,35 @@ service cloud.firestore {
       return task.title is string && task.title.size() > 0
         && task.status in ['Pending', 'In Progress', 'Completed']
         && task.projectId in ['lantern', 'hiphop']
-        && task.inCharge is string
-        && task.latestUpdate is string
+        && task.inCharge is list
         && task.createdAt is number;
+    }
+
+    // Helper function to validate BudgetItem data structure
+    function isValidBudgetItem() {
+      let item = request.resource.data;
+      return item.name is string && item.name.size() > 0
+        && item.type in ['prop', 'assistance']
+        && item.cost is number && item.cost >= 0
+        && item.quantity is number && item.quantity >= 1
+        && item.otherFee is number
+        && item.hasLaborFee is bool
+        && item.laborFee is number
+        && item.total is number
+        && item.link is string
+        && item.payers is list
+        && item.projectId in ['lantern', 'hiphop']
+        && item.createdAt is number;
+    }
+
+    // Helper function to validate PayerPayment structure (optional, for stricter validation)
+    function isValidPayer(payer) {
+      return payer.name is string
+        && payer.amountToPay is number
+        && payer.amountPaid is number
+        && payer.lastUpdated is number
+        && payer.status in ['delayed', 'paid', 'due']
+        && payer.paymentType in ['gcash', 'cash'];
     }
 
     match /zara_projects/{taskId} {
@@ -20,6 +46,53 @@ service cloud.firestore {
       
       // Allow public write access, but enforce data validation on create and update
       allow create, update: if isValidTask();
+      allow delete: if true;
+    }
+
+    match /zara_budget_items/{itemId} {
+      // Allow public read access
+      allow read: if true;
+      
+      // Allow public write access with data validation
+      allow create, update: if isValidBudgetItem();
+      allow delete: if true;
+    }
+
+    // Helper function to validate Note data structure
+    function isValidNote() {
+      let note = request.resource.data;
+      return note.title is string && note.title.size() > 0
+        && note.content is string
+        && note.isPinned is bool
+        && note.color in ['default', 'yellow', 'green', 'blue', 'pink', 'purple']
+        && note.projectId in ['lantern', 'hiphop']
+        && note.createdAt is number
+        && note.updatedAt is number;
+    }
+
+    match /zara_notes/{noteId} {
+      // Allow public read access
+      allow read: if true;
+      
+      // Allow public write access with data validation
+      allow create, update: if isValidNote();
+      allow delete: if true;
+    }
+
+    // Helper function to validate PeoplePreset data structure
+    function isValidPreset() {
+      let preset = request.resource.data;
+      return preset.name is string && preset.name.size() > 0
+        && preset.people is list
+        && preset.createdAt is number;
+    }
+
+    match /zara_people_presets/{presetId} {
+      // Allow public read access
+      allow read: if true;
+      
+      // Allow public write access with data validation
+      allow create, update: if isValidPreset();
       allow delete: if true;
     }
   }

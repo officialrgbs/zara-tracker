@@ -3,24 +3,75 @@
 import { useState } from "react";
 import { Header } from "@/components/Header";
 import { TasksView } from "@/components/TasksView";
-import { ProjectId, TabId, Task } from "@/types";
+import { BudgetsView } from "@/components/BudgetsView";
+import { NotesView } from "@/components/NotesView";
+import { ProjectId, TabId, Task, BudgetItem, Note } from "@/types";
 import { useZaraProjects } from "@/hooks/useZaraProjects";
+import { useBudgetItems } from "@/hooks/useBudgetItems";
+import { useNotes } from "@/hooks/useNotes";
+import { usePeoplePresets } from "@/hooks/usePeoplePresets";
 import { Loader2 } from "lucide-react";
 
 export default function Home() {
   const [currentProject, setCurrentProject] = useState<ProjectId>("lantern");
   const [currentTab, setCurrentTab] = useState<TabId>("tasks");
-  const { tasks, loading, addTask, updateTask, deleteTask } = useZaraProjects();
+  const { tasks, loading: tasksLoading, addTask, updateTask, deleteTask } = useZaraProjects();
+  const {
+    budgetItems,
+    loading: budgetLoading,
+    addBudgetItem,
+    updateBudgetItem,
+    deleteBudgetItem,
+    updatePayerPayment,
+    addPayerToItem,
+    removePayerFromItem
+  } = useBudgetItems();
+  const {
+    notes,
+    loading: notesLoading,
+    addNote,
+    updateNote,
+    deleteNote,
+    togglePin
+  } = useNotes();
+  const {
+    presets,
+    loading: presetsLoading,
+    addPreset,
+    deletePreset
+  } = usePeoplePresets();
 
   const handleAddTask = (newTask: Omit<Task, "id" | "createdAt">) => {
     addTask({
       ...newTask,
       createdAt: Date.now(),
-      projectId: currentProject, // Ensure project ID is set from current context
+      projectId: currentProject,
+    });
+  };
+
+  const handleAddBudgetItem = (newItem: Omit<BudgetItem, "id" | "createdAt">) => {
+    addBudgetItem({
+      ...newItem,
+      createdAt: Date.now(),
+      projectId: currentProject,
+    });
+  };
+
+  const handleAddNote = (newNote: Omit<Note, "id" | "createdAt" | "updatedAt">) => {
+    const now = Date.now();
+    addNote({
+      ...newNote,
+      createdAt: now,
+      updatedAt: now,
+      projectId: currentProject,
     });
   };
 
   const currentTasks = tasks.filter((t) => t.projectId === currentProject);
+  const currentBudgetItems = budgetItems.filter((b) => b.projectId === currentProject);
+  const currentNotes = notes.filter((n) => n.projectId === currentProject);
+
+  const loading = tasksLoading || budgetLoading || notesLoading || presetsLoading;
 
   return (
     <main className="min-h-screen bg-gray-50 font-sans">
@@ -39,13 +90,38 @@ export default function Home() {
         ) : (
           <>
             {currentTab === "tasks" && (
-              <TasksView tasks={currentTasks} onAddTask={handleAddTask} onUpdateTask={updateTask} onDeleteTask={deleteTask} />
+              <TasksView
+                tasks={currentTasks}
+                onAddTask={handleAddTask}
+                onUpdateTask={updateTask}
+                onDeleteTask={deleteTask}
+                presets={presets}
+                onSavePreset={addPreset}
+                onDeletePreset={deletePreset}
+              />
             )}
             {currentTab === "budget" && (
-              <div className="text-center py-20 text-gray-400">Budget View Coming Soon</div>
+              <BudgetsView
+                budgetItems={currentBudgetItems}
+                onAddItem={handleAddBudgetItem}
+                onUpdateItem={updateBudgetItem}
+                onDeleteItem={deleteBudgetItem}
+                onUpdatePayerPayment={updatePayerPayment}
+                onAddPayer={addPayerToItem}
+                onRemovePayer={removePayerFromItem}
+                presets={presets}
+                onSavePreset={addPreset}
+                onDeletePreset={deletePreset}
+              />
             )}
             {currentTab === "notes" && (
-              <div className="text-center py-20 text-gray-400">Notes View Coming Soon</div>
+              <NotesView
+                notes={currentNotes}
+                onAddNote={handleAddNote}
+                onUpdateNote={updateNote}
+                onDeleteNote={deleteNote}
+                onTogglePin={togglePin}
+              />
             )}
           </>
         )}
