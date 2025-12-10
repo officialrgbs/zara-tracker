@@ -1,0 +1,26 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to validate Task data structure
+    function isValidTask() {
+      let task = request.resource.data;
+      return task.title is string && task.title.size() > 0
+        && task.status in ['Pending', 'In Progress', 'Completed']
+        && task.projectId in ['lantern', 'hiphop']
+        && task.inCharge is string
+        && task.latestUpdate is string
+        && task.createdAt is number;
+    }
+
+    match /zara_projects/{taskId} {
+      // Allow public read access
+      allow read: if true;
+      
+      // Allow public write access, but enforce data validation on create and update
+      allow create, update: if isValidTask();
+      allow delete: if true;
+    }
+  }
+}
